@@ -339,7 +339,7 @@ $(function () {
                 {
                     ws.send('{"jsonrpc": "2.0","method": "printer.objects.query","params": {"objects": {"print_stats": null}},"id": 5434}')
                     ws.send('{"jsonrpc": "2.0","method": "printer.objects.subscribe","params": {"objects": {'+
-                                '"virtual_sdcard":["file_position"],'+
+                                '"virtual_sdcard":["file_position","progress"],'+
                                 '"print_stats":["filename"]'+
                                 //'"toolhead": ["gcode_position"]'+
                             '}},"id": 5434}'
@@ -354,15 +354,32 @@ $(function () {
                     
                     let msg = JSON.parse(e.data);
                     //console.log(msg.method)
+
+                    /*
+{"status":{"print_stats":{"print_duration":115.13222589399084,"total_duration":512.5488557939971,"filament_used":84.92500999999993,"filename":"CCR10_xyzCalibration_cube.gcode","state":"printing","message":""}},"eventtime":92035.208075412}
+js/prettygcodeview.js:362
+{"status":{"virtual_sdcard":{"file_position":15516},"print_stats":{"filename":"CCR10_xyzCalibration_cube.gcode"}},"eventtime":92035.208075412}
+js/prettygcodeview.js:362
+                    */
                     if(e.data.indexOf("print_stats")>-1)
                     {    
                         //console.log(msg.params[0].virtual_sdcard.file_position);
                         if(msg.result)
-                        {    if(msg.result.status.print_stats.filename)
+                        {   
+                            //console.log(JSON.stringify(msg.result)) 
+                            if(msg.result.status.print_stats.filename)
                             {
                                 let jobName=msg.result.status.print_stats.filename
                                 updateJob('http://fluiddpi.local/server/files/gcodes/'+jobName);
+                                $("#status-name").html(jobName)
                             }
+                            if(msg.result.status.print_stats.state)
+                            {
+                                curPrinterState=msg.result.status.print_stats.state.toLowerCase();
+                                $("#status-state").html(curPrinterState)
+                            }
+
+                            
                             //return;//handled
                         }
                         handled=true;
@@ -370,7 +387,7 @@ $(function () {
                     if(e.data.indexOf("virtual_sdcard")>-1)
                     {    
                         //console.log(msg.params[0].virtual_sdcard.file_position);
-
+                        console.log(JSON.stringify(msg.params)) 
                         if(msg.params)
                             curPrintFilePos=msg.params[0].virtual_sdcard.file_position
                         handled=true;
@@ -539,8 +556,8 @@ $(function () {
                 var statsElement=$("body").append( stats.dom );
                 
 
-                connectToOctoprint()
-                //connectToMoonraker();
+                //connectToOctoprint()
+                connectToMoonraker();
                 
                 //GCode loader.
                 // gcodeProxy = new GCodeObject2();
