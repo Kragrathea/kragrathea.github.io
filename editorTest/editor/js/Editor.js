@@ -6,6 +6,10 @@ import { History as _History } from './History.js';
 import { Strings } from './Strings.js';
 import { Storage as _Storage } from './Storage.js';
 import { Selector } from './Viewport.Selector.js';
+import { Model, Selection, LineTool } from './LineTool.js';
+import CameraControls from './camera-controls.module.js';
+
+CameraControls.install( { THREE: THREE } );
 
 THREE.ColorManagement.enabled = true;
 
@@ -132,6 +136,10 @@ function Editor() {
 	this.addCamera( this.camera );
 
 	this.activeTool=null;
+
+	const model=new Model()
+	this.model=model;
+
 	//this.toolManager=new ToolManager(this);
 
 }
@@ -672,6 +680,8 @@ Editor.prototype = {
 		this.history.fromJSON( json.history );
 		this.scripts = json.scripts;
 
+		//this.model=JSON.parse(json.model);
+
 		this.setScene( await loader.parseAsync( json.scene ) );
 
 	},
@@ -710,6 +720,7 @@ Editor.prototype = {
 			},
 			camera: this.camera.toJSON(),
 			scene: this.scene.toJSON(),
+			//model: this.model.toJSON(),
 			scripts: this.scripts,
 			history: this.history.toJSON()
 

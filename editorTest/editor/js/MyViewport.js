@@ -21,6 +21,14 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 
+import { Line2 } from '/examples/jsm/lines/Line2.js';
+import { LineMaterial } from '/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from '/examples/jsm/lines/LineGeometry.js';
+import { Model, Selection, LineTool, MoveTool } from './LineTool.js';
+import { SelectTool } from './SelectTool.js';
+import CameraControls from './camera-controls.module.js';
+
+
 
 function xInferAxesHelper( size ) {
 
@@ -51,6 +59,188 @@ function xInferAxesHelper( size ) {
 
 }
 
+
+function toColorArray( colors ) {
+
+	const array = [];
+
+	for ( let i = 0, l = colors.length; i < l; i += 3 ) {
+
+		array.push( new THREE.Color( colors[ i ], colors[ i + 1 ], colors[ i + 2 ] ) );
+
+	}
+
+	return array;
+
+}
+
+/**
+		 * Vertically paints the faces interpolating between the
+		 * specified colors at the specified angels. This is used for the Background
+		 * node, but could be applied to other nodes with multiple faces as well.
+		 *
+		 * When used with the Background node, default is directionIsDown is true if
+		 * interpolating the skyColor down from the Zenith. When interpolationg up from
+		 * the Nadir i.e. interpolating the groundColor, the directionIsDown is false.
+		 *
+		 * The first angle is never specified, it is the Zenith (0 rad). Angles are specified
+		 * in radians. The geometry is thought a sphere, but could be anything. The color interpolation
+		 * is linear along the Y axis in any case.
+		 *
+		 * You must specify one more color than you have angles at the beginning of the colors array.
+		 * This is the color of the Zenith (the top of the shape).
+		 *
+		 * @param {BufferGeometry} geometry
+		 * @param {number} radius
+		 * @param {array} angles
+		 * @param {array} colors
+		 * @param {boolean} topDown - Whether to work top down or bottom up.
+		 */
+ function paintFaces( geometry, radius, angles, colors, topDown ) {
+	// compute threshold values
+	const thresholds = [];
+	const startAngle = ( topDown === true ) ? 0 : Math.PI;
+	for ( let i = 0, l = colors.length; i < l; i ++ ) {
+
+		let angle = ( i === 0 ) ? 0 : angles[ i - 1 ];
+		angle = ( topDown === true ) ? angle : ( startAngle - angle );
+
+		const point = new THREE.Vector3();
+		point.setFromSphericalCoords( radius, angle, 0 );
+
+		thresholds.push( point );
+
+	}
+
+	// generate vertex colors
+
+	const indices = geometry.index;
+	const positionAttribute = geometry.attributes.position;
+	const colorAttribute = new THREE.BufferAttribute( new Float32Array( geometry.attributes.position.count * 3 ), 3 );
+
+	const position = new THREE.Vector3();
+	const color = new THREE.Color();
+
+	for ( let i = 0; i < indices.count; i ++ ) {
+
+		const index = indices.getX( i );
+		position.fromBufferAttribute( positionAttribute, index );
+
+		let thresholdIndexA, thresholdIndexB;
+		let t = 1;
+
+		for ( let j = 1; j < thresholds.length; j ++ ) {
+
+			thresholdIndexA = j - 1;
+			thresholdIndexB = j;
+
+			const thresholdA = thresholds[ thresholdIndexA ];
+			const thresholdB = thresholds[ thresholdIndexB ];
+
+			if ( topDown === true ) {
+
+				// interpolation for sky color
+
+				if ( position.y <= thresholdA.y && position.y > thresholdB.y ) {
+
+					t = Math.abs( thresholdA.y - position.y ) / Math.abs( thresholdA.y - thresholdB.y );
+
+					break;
+
+				}
+
+			} else {
+
+				// interpolation for ground color
+
+				if ( position.y >= thresholdA.y && position.y < thresholdB.y ) {
+
+					t = Math.abs( thresholdA.y - position.y ) / Math.abs( thresholdA.y - thresholdB.y );
+
+					break;
+
+				}
+
+			}
+
+		}
+
+		const colorA = colors[ thresholdIndexA ];
+		const colorB = colors[ thresholdIndexB ];
+
+		color.copy( colorA ).lerp( colorB, t );
+
+		colorAttribute.setXYZ( index, color.r, color.g, color.b );
+
+	}
+	geometry.setAttribute( 'color', colorAttribute );
+}
+
+function buildBackground() {
+	const group = new THREE.Group();
+
+	let groundAngle=[
+		1.5, 1.6
+	]
+	let groundColor=[
+		0.2, 0.6, 0.3, 0.4, 0.4, 0.35, 0.3, 0.5, 0.6
+	]
+	let skyAngle=[
+		1.5
+	]
+	let skyColor=[
+		0.5, 0.7, 1, 0.7, 1, 0.9,
+	]
+
+	const radius = 900;
+	if ( skyColor ) {
+
+		const skyGeometry = new THREE.SphereGeometry( radius, 32, 16 );
+		const skyMaterial = new THREE.MeshBasicMaterial( { fog: false, side: THREE.BackSide, depthWrite: false, depthTest: false } );
+
+		if ( skyColor.length > 3 ) {
+
+			paintFaces( skyGeometry, radius, skyAngle, toColorArray( skyColor ), true );
+			skyMaterial.vertexColors = true;
+
+		} else {
+
+			skyMaterial.color.setRGB( skyColor[ 0 ], skyColor[ 1 ], skyColor[ 2 ] );
+
+		}
+
+		const sky = new THREE.Mesh( skyGeometry, skyMaterial );
+		group.add( sky );
+
+	}
+
+	// ground
+
+	if ( groundColor ) {
+
+		if ( groundColor.length > 0 ) {
+
+			const groundGeometry = new THREE.SphereGeometry( radius, 32, 16, 0, 2 * Math.PI, 0.5 * Math.PI, 1.5 * Math.PI );
+			const groundMaterial = new THREE.MeshBasicMaterial( { fog: false, side: THREE.BackSide, vertexColors: true, depthWrite: false, depthTest: false } );
+
+			paintFaces( groundGeometry, radius, groundAngle, toColorArray( groundColor ), false );
+
+			const ground = new THREE.Mesh( groundGeometry, groundMaterial );
+			group.add( ground );
+
+		}
+
+	}
+
+	// render background group first
+
+	group.renderOrder = - Infinity;
+
+	return group;
+
+}
+
+
 // InferAxesHelper.prototype = Object.create( THREE.LineSegments.prototype );
 // InferAxesHelper.prototype.constructor = InferAxesHelper;
 
@@ -67,9 +257,9 @@ class InferAxesHelper extends THREE.LineSegments {
 		];
 	
 		var colors = [
-			1, 0, 0,	1, 0.6, 0,
-			0, 1, 0,	0.6, 1, 0,
-			0, 0, 1,	0, 0.6, 1
+			1, 0.6, 0,	1, 0.6, 0,
+			0.6, 1, 0,	0.6, 1, 0,
+			0, 0.6, 1,	0, 0.6, 1
 		];
 	
 		var geometry = new THREE.BufferGeometry();
@@ -98,6 +288,8 @@ class InferAxesHelper extends THREE.LineSegments {
 function Viewport( editor ) {
 
 	this.editor=editor;
+	editor.view=this;
+
 	const view = this;
 	
 	const signals = editor.signals;
@@ -105,6 +297,7 @@ function Viewport( editor ) {
 	this.signals=editor.signals;
 
 	const container = new UIPanel();
+	this.container=container;
 	container.setId( 'viewport' );
 	container.setPosition( 'absolute' );
 
@@ -113,6 +306,7 @@ function Viewport( editor ) {
 	//container.add( new ViewportInfo( editor ) );
 
 	var viewportInfo = new ViewportInfo( editor );
+	this.viewportInfo=viewportInfo;
 	container.add( viewportInfo );
 
 	//
@@ -138,11 +332,25 @@ function Viewport( editor ) {
 	let pmremGenerator = null;
 
 	const camera = editor.camera;
+	this.camera = camera;
+	
 	const scene = editor.scene;
+	this.scene = scene;
+
+	this.model=editor.model;//todo: remove this and use editor directly.
+
+	//const entities = new Entities(this)
+	//this.entities=entities;
+
+	const selection = new Selection(this)
+	this.selection=selection;
+	
 	const sceneHelpers = editor.sceneHelpers;
 	let showSceneHelpers = true;
 
 	// helpers
+
+
 
 	const grid = new THREE.Group();
 	sceneHelpers.add( grid );
@@ -156,6 +364,20 @@ function Viewport( editor ) {
 	grid2.material.color.setHex( 0x222222 );
 	grid2.material.vertexColors = false;
 	grid.add( grid2 );
+	grid.receiveShadow = true;
+	grid1.receiveShadow = true;
+	grid2.receiveShadow = true;
+
+
+	grid.visible=true;
+
+	var sceneAxis = new THREE.AxesHelper( 100 )
+	sceneAxis.visible=true;
+	sceneHelpers.add( sceneAxis );
+	sceneAxis = new THREE.AxesHelper( -100 )
+	sceneAxis.visible=true;
+	sceneHelpers.add( sceneAxis );
+
 
 	const viewHelper = new ViewHelper( camera, container );
 	const vr = new VR( editor );
@@ -178,7 +400,23 @@ function Viewport( editor ) {
 	//geometry.computeLineDistances();
 
 	var lineHelperMaterial = new THREE.LineBasicMaterial( { color: 0xff0000, linewidth: 2 } );
-	const edgeMaterial = new THREE.LineBasicMaterial( { color: 0xff00ff, toneMapped:false, linewidth: 2 } );
+	//const edgeMaterial = new THREE.LineBasicMaterial( { color: 0xff00ff, toneMapped:false, linewidth: 2 } );
+	const edgeMaterial = new LineMaterial( {
+
+		color: 0xffffff,
+		//linewidth: 5, // in pixels
+		vertexColors: true,
+		//resolution:  // to be set by renderer, eventually
+		dashed: false,
+		alphaToCoverage: true,
+		onBeforeCompile: shader => {
+		  shader.vertexShader = `
+			${shader.vertexShader}
+		  `.replace(`uniform float linewidth;`, `attribute float linewidth;`);
+		  //console.log(shader.vertexShader)
+		}
+	  
+	  } );
 	
 	var dashedLineMaterial = new THREE.LineDashedMaterial( {
 		color: 0xffffff,
@@ -191,6 +429,9 @@ function Viewport( editor ) {
 	lineHelper.visible=false;
 	sceneHelpers.add( lineHelper );
 
+	const sky=buildBackground();
+	//sceneHelpers.add( sky);
+	
 	///////////////////////////////////////////
 
 	//
@@ -293,11 +534,13 @@ function Viewport( editor ) {
 	// object picking
 
 	const raycaster = new THREE.Raycaster();
+	raycaster.params.Line2={threshold :10};
 	const mouse = new THREE.Vector2();
 
 	//////////////////////////////////
-	var myraycaster = new THREE.Raycaster();
-	myraycaster.linePrecision = 0.2;
+	//var myraycaster = new THREE.Raycaster();
+	//myraycaster.linePrecision = 0.2;
+
 	//High precision ray caster
 	var iraycaster = new THREE.Raycaster();
 	iraycaster.linePrecision = 0.00001;
@@ -317,6 +560,7 @@ function Viewport( editor ) {
 		mouse.set( ( point.x * 2 ) - 1, - ( point.y * 2 ) + 1 );
 
 		raycaster.setFromCamera( mouse, camera );
+
 
 		const objects = [];
 
@@ -379,7 +623,15 @@ function Viewport( editor ) {
 	
 						console.log("edge:"+JSON.stringify(edgeVerts))
 
-						const edgeGeometry = new THREE.BufferGeometry().setFromPoints( edgeVerts );
+						//const edgeGeometry = new THREE.BufferGeometry().setFromPoints( edgeVerts );
+						const edgeGeometry = new LineGeometry();
+						edgeGeometry.setPositions( edgeVerts );
+						clr=[]
+						clr.push(Math.random(), Math.random(), Math.random());
+						clr.push(Math.random(), Math.random(), Math.random());
+						edgeGeometry.setColors( clr );
+						edgeGeometry.setAttribute("linewidth", new THREE.InstancedBufferAttribute(new Float32Array(wdth), 1));
+
 						//edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgeVerts, 3));
 						edgeGeometry.needsUpdate=true;
 
@@ -408,7 +660,12 @@ function Viewport( editor ) {
 	
 						
 						
-						var edge = new THREE.Line( edgeGeometry,  edgeMaterial );
+						//var edge = new THREE.Line( edgeGeometry,  edgeMaterial );
+
+						var edge = new Line2( edgeGeometry,  edgeMaterial );
+						edge.computeLineDistances();
+						edge.scale.set( 1, 1, 1 );
+
 						edge.name="Edge";
 	//					lineToolFirstPoint=null;
 	//					lineHelper.visible=false;
@@ -450,6 +707,15 @@ function Viewport( editor ) {
 		var array = getMousePosition( container.dom, event.clientX, event.clientY );
 		onDoubleClickPosition.fromArray( array );
 
+		if(editor.activeTool && editor.activeTool.onMouseMove)
+		{
+			editor.activeTool.onMouseMove(event,onDoubleClickPosition,view)
+		}
+
+		//viewportInfo.setInferText(viewCursorInferString);
+		render()//todo. only when needed?
+		return;
+
 		var objects = scene.children;
 		var intersects = getIntersects( onDoubleClickPosition, objects );
 		//console.log("scene:children:"+[scene,objects])
@@ -489,13 +755,13 @@ function Viewport( editor ) {
 					if(screenDist<curDist)//closer previous edges.
 					{
 						curDist=screenDist;
-						var v0=new THREE.Vector3(intersect.object.geometry.attributes.position.array[0],
-							intersect.object.geometry.attributes.position.array[1],
-							intersect.object.geometry.attributes.position.array[2]);
+						var v0=new THREE.Vector3(intersect.object.geometry.attributes.instanceStart.array[0],
+							intersect.object.geometry.attributes.instanceStart.array[1],
+							intersect.object.geometry.attributes.instanceStart.array[2]);
 						//console.log("v0:"+JSON.stringify(v0))
-						var v1=new THREE.Vector3(intersect.object.geometry.attributes.position.array[3],
-							intersect.object.geometry.attributes.position.array[4],
-							intersect.object.geometry.attributes.position.array[5]);
+						var v1=new THREE.Vector3(intersect.object.geometry.attributes.instanceStart.array[3],
+							intersect.object.geometry.attributes.instanceStart.array[4],
+							intersect.object.geometry.attributes.instanceStart.array[5]);
 						//console.log("v0 dist:"+curPos.distanceTo( v0.clone().project(camera)))
 						if( curPos.distanceTo( v0.clone().project(camera))<pointThreshold){
 							viewCursorInferString="On Endpoint";			
@@ -507,7 +773,7 @@ function Viewport( editor ) {
 							viewCursorValid=true;							
 						}else {
 							viewCursorInferString="On Edge";
-							viewCursor.position.copy( intersect.point );
+							viewCursor.position.copy( intersect.pointOnLine );
 							viewCursorValid=true;							
 						}						
 					}
@@ -584,6 +850,7 @@ function Viewport( editor ) {
 		const array = getMousePosition( container.dom, event.clientX, event.clientY );
 		onUpPosition.fromArray( array );
 
+		let handled=false;
 		if(editor.activeTool && editor.activeTool.onMouseUp)
 		{
 			editor.activeTool.onMouseUp(event,onUpPosition,view)
@@ -591,9 +858,16 @@ function Viewport( editor ) {
 
 		//handleClick();
 
+
 		document.removeEventListener( 'mouseup', onMouseUp );
 
 	}
+	function onContextMenu(event)
+	{
+		console.log("Context Menu Disabled!!")
+		event.preventDefault();
+	}
+	document.addEventListener('contextmenu', onContextMenu);
 
 	function onTouchStart( event ) {
 
@@ -636,15 +910,93 @@ function Viewport( editor ) {
 
 	}
 
+
 	container.dom.addEventListener( 'mousedown', onMouseDown );
 	container.dom.addEventListener( 'touchstart', onTouchStart, { passive: false } );
 	container.dom.addEventListener( 'dblclick', onDoubleClick );
 	container.dom.addEventListener( 'mousemove', onMouseMove, false );
 
+	function onKeyDown(event)
+	{
+		console.log("onKeyDown"+event.keyCode)
+		if(event.keyCode==32)
+		{
+			//editor.setTool(new SelectTool());
+		}else if(event.keyCode==76 || event.keyCode==68) //L or D
+		{
+			//editor.setTool(new LineTool());
+		}else{
+			if(editor.activeTool && editor.activeTool.onKeyDown)
+				editor.activeTool.onKeyDown(event)	
+		}		
+	}
+	window.addEventListener( 'keydown', onKeyDown, false );
+
+	function onKeyUp(event)
+	{
+		console.log("onKeyUp"+event.keyCode)
+		if(event.keyCode==27)
+		{
+			if(editor.activeTool && editor.activeTool.cancel)
+				editor.activeTool.cancel(event)
+
+		}else if(event.keyCode==32)
+		{
+			editor.setTool(new SelectTool());
+		}else if(event.keyCode==76 || event.keyCode==68) //L or D
+		{
+			editor.setTool(new LineTool());
+		}else if(event.keyCode==77) //L or D
+		{
+			editor.setTool(new MoveTool());
+		}else{
+			if(editor.activeTool && editor.activeTool.onKeyUp)
+				editor.activeTool.onKeyUp(event)	
+		}		
+	}
+	window.addEventListener( 'keyup', onKeyUp, false );
 	// controls need to be added *after* main logic,
 	// otherwise controls.enabled doesn't work.
 
-	const controls = new EditorControls( camera, container.dom );
+	//const controls new EditorControls( camera, container.dom );
+	const controls = new CameraControls( camera, container.dom );
+
+	controls.mouseButtons.middle=CameraControls.ACTION.ROTATE;
+	controls.mouseButtons.left=CameraControls.ACTION.NONE;
+	controls.mouseButtons.right=CameraControls.ACTION.NONE;
+	// switch the behavior by the modifier key press
+	const keyState = {
+		shiftRight  : false,
+		shiftLeft   : false,
+		controlRight: false,
+		controlLeft : false,
+	};
+	const updateConfig = () => {
+		if ( keyState.shiftRight || keyState.shiftLeft ) {
+			controls.mouseButtons.middle = CameraControls.ACTION.TRUCK;
+		} else if ( keyState.controlRight || keyState.controlLeft ) {
+			controls.mouseButtons.middle = CameraControls.ACTION.DOLLY;
+		} else {
+			controls.mouseButtons.middle = CameraControls.ACTION.ROTATE;
+		}
+	}
+	document.addEventListener( 'keydown', ( event ) => {
+		if ( event.code === 'ShiftRight'   ) keyState.shiftRight   = true;
+		if ( event.code === 'ShiftLeft'    ) keyState.shiftLeft    = true;
+		if ( event.code === 'ControlRight' ) keyState.controlRight = true;
+		if ( event.code === 'ControlLeft'  ) keyState.controlLeft  = true;
+		updateConfig();
+	} );
+
+	document.addEventListener( 'keyup', ( event ) => {
+		if ( event.code === 'ShiftRight'   ) keyState.shiftRight   = false;
+		if ( event.code === 'ShiftLeft'    ) keyState.shiftLeft    = false;
+		if ( event.code === 'ControlRight' ) keyState.controlRight = false;
+		if ( event.code === 'ControlLeft'  ) keyState.controlLeft  = false;
+		updateConfig();
+	} );
+
+
 	controls.addEventListener( 'change', function () {
 
 		signals.cameraChanged.dispatch( camera );
@@ -764,7 +1116,7 @@ function Viewport( editor ) {
 		selectionBox.visible = false;
 		transformControls.detach();
 
-		if ( object !== null && object !== scene && object !== camera ) {
+		if ( object !== null && object !== scene && object !== camera && !object.isLine2 ) {
 
 			box.setFromObject( object, true );
 
@@ -1061,7 +1413,12 @@ function Viewport( editor ) {
 
 		let needsUpdate = false;
 
+
+		//yomotsu camera
+		needsUpdate = controls.update( delta );
+
 		// Animations
+
 
 		const actions = mixer.stats.actions;
 
@@ -1103,12 +1460,25 @@ function Viewport( editor ) {
 		startTime = performance.now();
 
 		renderer.setViewport( 0, 0, container.dom.offsetWidth, container.dom.offsetHeight );
+
+		renderer.render( sky, editor.viewportCamera );
+		renderer.autoClear = false;
 		renderer.render( scene, editor.viewportCamera );
+		renderer.autoClear = true;
 
 		if ( camera === editor.viewportCamera ) {
 
 			renderer.autoClear = false;
 			if ( showSceneHelpers === true ) renderer.render( sceneHelpers, camera );
+			
+			if(editor.activeTool && editor.activeTool.render)
+			{
+				editor.activeTool.render(renderer,camera);
+			}
+			if(editor.model.entities)
+			{
+				editor.model.entities.render(renderer,camera);
+			}
 			if ( vr.currentSession === null ) viewHelper.render( renderer );
 			renderer.autoClear = true;
 

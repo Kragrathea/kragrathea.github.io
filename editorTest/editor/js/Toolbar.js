@@ -1,5 +1,6 @@
 import { UIPanel, UIButton, UICheckbox } from './libs/ui.js';
-import { LineTool,MoveTool, SelectTool } from './LineTool.js';
+import { LineTool,MoveTool } from './LineTool.js';
+import { SelectTool } from './SelectTool.js';
 
 function Toolbar( editor ) {
 
@@ -31,7 +32,7 @@ function Toolbar( editor ) {
 
 	const lineToolIcon = document.createElement( 'img' );
 	lineToolIcon.title = strings.getKey( 'toolbar/translate' );
-	lineToolIcon.src = 'images/translate.svg';
+	lineToolIcon.src = 'images/line.svg';
 
 	const lineToolButton = new UIButton();
 	lineToolButton.dom.className = 'Button';
