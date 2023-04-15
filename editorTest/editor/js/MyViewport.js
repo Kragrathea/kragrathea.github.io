@@ -21,9 +21,9 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 
-import { Line2 } from '/examples/jsm/lines/Line2.js';
-import { LineMaterial } from '/examples/jsm/lines/LineMaterial.js';
-import { LineGeometry } from '/examples/jsm/lines/LineGeometry.js';
+import { Line2 } from '../../examples/jsm/lines/Line2.js';
+import { LineMaterial } from '../../examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from '../../examples/jsm/lines/LineGeometry.js';
 import { Model, Selection, LineTool, MoveTool } from './LineTool.js';
 import { SelectTool } from './SelectTool.js';
 import CameraControls from './camera-controls.module.js';
