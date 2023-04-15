@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 import { Command } from './Command.js';
-import { Line2 } from '/examples/jsm/lines/Line2.js';
-import { LineMaterial } from '/examples/jsm/lines/LineMaterial.js';  
-import { LineGeometry } from '/examples/jsm/lines/LineGeometry.js';
+import { Line2 } from '../../examples/jsm/lines/Line2.js';
+import { LineMaterial } from '../../examples/jsm/lines/LineMaterial.js';  
+import { LineGeometry } from '../../examples/jsm/lines/LineGeometry.js';
 import { Vector3 } from '../../src/math/Vector3.js';
 import { SelectTool } from './SelectTool.js';
 
